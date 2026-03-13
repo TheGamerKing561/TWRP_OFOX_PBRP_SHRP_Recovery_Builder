@@ -140,7 +140,20 @@ jobs:
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
       run: |
-        sudo apt-get install python2 python-is-python2
+        # Add the legacy repository
+        sudo add-apt-repository ppa:deadsnakes/ppa -y
+        sudo apt-get update
+        
+        # Install Python 2.7
+        sudo apt-get install python2.7 -y
+        
+        # Option 3: Manually link python2 to the 'python' command
+        # This fixes scripts that call #!/usr/bin/env python
+        sudo ln -sf /usr/bin/python2.7 /usr/bin/python
+        sudo ln -sf /usr/bin/python2.7 /usr/bin/python2
+        
+        # Verify installation
+        python --version
 
     - name: Building Image 
       run: |
