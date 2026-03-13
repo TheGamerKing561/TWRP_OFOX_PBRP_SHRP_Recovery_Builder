@@ -6,7 +6,7 @@ on:
       MANIFEST_BRANCH:
         description: 'TWRP Manifest Branch'
         required: true
-        default: ''
+        default: 'twrp-12.1'
         type: choice
         options:
         - twrp-14.1
@@ -22,27 +22,27 @@ on:
         - twrp-5.1
         - twrp-4.4-deprecated
       DEVICE_TREE:
-        description: 'Custom Recovery Tree' # Your already made Device Tree for TWRP
+        description: 'Custom Recovery Tree'
         required: true
         default: 'https://github.com/username/repo'
       DEVICE_TREE_BRANCH:
-        description: 'Custom Recovery Tree Branch' # Your Device Tree Branch, make sure it's right.
+        description: 'Custom Recovery Tree Branch'
         required: true
-        default: 'enter_your_branch'
+        default: 'main'
       DEVICE_PATH:
         description: 'DEVICE_PATH'
         required: true
-        default: 'device/'
+        default: 'device/brand/codename'
       DEVICE_NAME:
-        description: 'DEVICE_NAME'
+        description: 'DEVICE_NAME (Codename)'
         required: true
         default: ''
       MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME (excluding .mk extension, Example: omni_7304F)'
+        description: 'MAKEFILE_NAME (excluding .mk extension, Example: omni_codename)'
         required: true
         default: 'omni_'
       BUILD_TARGET:
-        description: 'Specify your Build Target' # Pick among boot, recovery and vendor_boot
+        description: 'Specify your Build Target'
         required: true
         default: 'recovery'
         type: choice
@@ -56,7 +56,7 @@ on:
         default: 'false'
         type: boolean
       LDCHECKPATH:
-        description: 'Path of blobs to check' # Use it know what kind of dependencies your missing for decryption blobs.
+        description: 'Path of blobs to check'
         required: true
         default: 'system/bin/qseecomd'
 
@@ -71,7 +71,7 @@ jobs:
       contents: write
     steps:
     - name: Check Out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       
     - name: Cleanup
       uses: rokibhasansagar/slimhub_actions@main
@@ -83,7 +83,7 @@ jobs:
 
     - name: Check Manifest Branch
       run: |
-        if [ ${{ inputs.MANIFEST_BRANCH }} == 'twrp-11' ] || [ ${{ inputs.MANIFEST_BRANCH }} == 'twrp-12.1' ] || [ ${{ inputs.MANIFEST_BRANCH }} == 'twrp-14' ]; then
+        if [ "${{ inputs.MANIFEST_BRANCH }}" == "twrp-11" ] || [ "${{ inputs.MANIFEST_BRANCH }}" == "twrp-12.1" ] || [ "${{ inputs.MANIFEST_BRANCH }}" == "twrp-14" ]; then
             echo "MANIFEST=https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git" >> $GITHUB_ENV
             echo "CHECK_LEGACY_BRANCH=false" >> $GITHUB_ENV
         else
@@ -95,16 +95,9 @@ jobs:
       run: |
         sudo apt update
         sudo apt -y upgrade
-        
-        # Required for python2 on 22.04
         sudo add-apt-repository universe
-        
-        # Note: 'python-is-python2' does NOT exist in 22.04. We install the raw binary.
         sudo apt -y install python2
-        
-        # This is required because there is no package to do it for us anymore.
         sudo ln -sf /usr/bin/python2 /usr/bin/python
-        
         sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib \
         libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev \
         libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev \
@@ -113,7 +106,7 @@ jobs:
         lzma ncftp qemu-user-static libstdc++-10-dev libtinfo5 libgflags-dev libncurses5
         
     - name: Install OpenJDK
-      uses: actions/setup-java@v5
+      uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '8'
@@ -142,7 +135,7 @@ jobs:
       run: |
         cd android-recovery
         git clone ${{ inputs.DEVICE_TREE }} -b ${{ inputs.DEVICE_TREE_BRANCH }} ./${{ inputs.DEVICE_PATH }}
-        echo "COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
+        echo "COMMIT_ID=$(cd ${{ inputs.DEVICE_PATH }} && git rev-parse HEAD)" >> $GITHUB_ENV
 
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
@@ -152,18 +145,49 @@ jobs:
     - name: Building Image 
       run: |
         cd android-recovery
+        
+        # Prevent strict bash exit for setup script
+        set +e
         source build/envsetup.sh
+        set -e
+        
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch ${{ inputs.MAKEFILE_NAME }}-eng && make clean && make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
+        lunch ${{ inputs.MAKEFILE_NAME }}-eng || { echo "Lunch failed"; exit 1; }
+
+        # 1. Clean the build tree
+        make clean
+
+        # 2. Setup Paths for DTB Injection
+        STD_OUT_DIR="out/target/product/${{ inputs.DEVICE_NAME }}"
+        ERR_OUT_DIR="out/target/product/${{ inputs.DEVICE_NAME }}/target/product/${{ inputs.DEVICE_NAME }}"
+        DTB_SRC="${{ inputs.DEVICE_PATH }}/prebuilt/dtb.img"
+
+        echo "Creating output directories..."
+        mkdir -p "$STD_OUT_DIR"
+        mkdir -p "$ERR_OUT_DIR"
+
+        if [ -f "$DTB_SRC" ]; then
+            echo "Injecting DTB into output locations..."
+            cp "$DTB_SRC" "$STD_OUT_DIR/dtb.img"
+            cp "$DTB_SRC" "$ERR_OUT_DIR/dtb.img"
+            touch "$STD_OUT_DIR/dtb.img"
+            touch "$ERR_OUT_DIR/dtb.img"
+            echo "DTB Injection successful."
+        else
+            echo "::warning::dtb.img not found at $DTB_SRC"
+        fi
+
+        # 3. Build the target
+        make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
 
-    - name: Set Build Date # Output will be use in Release
+    - name: Set Build Date
       run: |
         echo "BUILD_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
       
     - name: Upload to Release
       if: success()
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/${{ inputs.BUILD_TARGET }}.img
@@ -174,17 +198,18 @@ jobs:
         tag_name: ${{ github.run_id }}
         body: |
           Build: ${{ inputs.MANIFEST_BRANCH }}
-          Device: [Device Tree/Branch](${{ inputs.DEVICE_TREE }}/tree/${{ inputs.DEVICE_TREE_BRANCH }})
-          Commit: Most recent [commit](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) during building.
+          Device: [Device Tree](${{ inputs.DEVICE_TREE }})
+          Branch: ${{ inputs.DEVICE_TREE_BRANCH }}
+          Commit: ${{ env.COMMIT_ID }}
         prerelease: true
 
     - name: Run LDCheck
       if: inputs.LDCHECK == 'true'
       run: |
         cd tools
-        mv -n libneeds ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/
-        mv -n ldcheck ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/
+        # Path adjustments based on the build output
+        mv -n libneeds ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
+        mv -n ldcheck ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
         cd ../android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root
         python3 ldcheck -p system/lib64:vendor/lib64:system/lib:vendor/lib -d ${{ inputs.LDCHECKPATH }}
-        echo "Done checking missing dependencies. Review, and reconfigure your tree."
       continue-on-error: true
