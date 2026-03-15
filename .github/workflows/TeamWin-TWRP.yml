@@ -137,29 +137,23 @@ jobs:
         git clone ${{ inputs.DEVICE_TREE }} -b ${{ inputs.DEVICE_TREE_BRANCH }} ./${{ inputs.DEVICE_PATH }}
         echo "COMMIT_ID=$(cd ${{ inputs.DEVICE_PATH }} && git rev-parse HEAD)" >> $GITHUB_ENV
 
+    - name: Set Build Date
+      run: |
+        echo "BUILD_DATE=$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
+
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
       run: |
-        # Add the legacy repository
         sudo add-apt-repository ppa:deadsnakes/ppa -y
         sudo apt-get update
-        
-        # Install Python 2.7
         sudo apt-get install python2.7 -y
-        
-        # Option 3: Manually link python2 to the 'python' command
-        # This fixes scripts that call #!/usr/bin/env python
         sudo ln -sf /usr/bin/python2.7 /usr/bin/python
         sudo ln -sf /usr/bin/python2.7 /usr/bin/python2
-        
-        # Verify installation
         python --version
 
     - name: Building Image 
       run: |
         cd android-recovery
-        
-        # Prevent strict bash exit for setup script
         set +e
         source build/envsetup.sh
         set -e
@@ -167,10 +161,8 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         lunch ${{ inputs.MAKEFILE_NAME }}-eng || { echo "Lunch failed"; exit 1; }
 
-        # 1. Clean the build tree
         make clean
 
-        # 2. Setup Paths for DTB Injection
         STD_OUT_DIR="out/target/product/${{ inputs.DEVICE_NAME }}"
         ERR_OUT_DIR="out/target/product/${{ inputs.DEVICE_NAME }}/target/product/${{ inputs.DEVICE_NAME }}"
         DTB_SRC="${{ inputs.DEVICE_PATH }}/prebuilt/dtb.img"
@@ -190,14 +182,9 @@ jobs:
             echo "::warning::dtb.img not found at $DTB_SRC"
         fi
 
-        # 3. Build the target
         make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
 
-    - name: Set Build Date
-      run: |
-        echo "BUILD_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
-      
     - name: Upload to Release
       if: success()
       uses: softprops/action-gh-release@v2
@@ -208,7 +195,7 @@ jobs:
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/ramdisk-recovery.*
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/vbmeta.*
         name: Unofficial TWRP for ${{ inputs.DEVICE_NAME }} // ${{ env.BUILD_DATE }}
-        tag_name: ${{ github.run_id }}
+        tag_name: build-${{ env.BUILD_DATE }}
         body: |
           Build: ${{ inputs.MANIFEST_BRANCH }}
           Device: [Device Tree](${{ inputs.DEVICE_TREE }})
@@ -220,7 +207,6 @@ jobs:
       if: inputs.LDCHECK == 'true'
       run: |
         cd tools
-        # Path adjustments based on the build output
         mv -n libneeds ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
         mv -n ldcheck ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
         cd ../android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root
