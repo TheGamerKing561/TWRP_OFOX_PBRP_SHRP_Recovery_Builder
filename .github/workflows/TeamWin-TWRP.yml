@@ -130,6 +130,20 @@ jobs:
       run: |
         cd android-recovery
         repo sync -j$(nproc --all) --force-sync
+
+    - name: Detect TWRP Version
+      run: |
+       cd android-recovery
+
+       TWRP_VERSION=$(grep -oP 'TW_MAIN_VERSION_STR\s+"\K[^"]+' bootable/recovery/variables.h)
+
+       if [ -z "$TWRP_VERSION" ]; then
+         echo "Could not detect TWRP version"
+         TWRP_VERSION="unknown"
+       fi
+
+       echo "Detected TWRP version: $TWRP_VERSION"
+       echo "TWRP_VERSION=$TWRP_VERSION" >> $GITHUB_ENV
       
     - name: Clone Device Tree
       run: |
@@ -185,12 +199,24 @@ jobs:
         make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
 
+    - name: Rename Build Output
+      run: |
+        cd android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}
+
+        VERSION="${{ env.TWRP_VERSION }}"
+        CODENAME="${{ inputs.DEVICE_NAME }}"
+        DATE="${{ env.BUILD_DATE }}"
+
+        if [ -f "${{ inputs.BUILD_TARGET }}.img" ]; then
+          mv ${{ inputs.BUILD_TARGET }}.img twrp-${VERSION}-${CODENAME}-${DATE}.img
+        fi
+
     - name: Upload to Release
       if: success()
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/${{ inputs.BUILD_TARGET }}.img
+          android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/twrp-*.img
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/*installer*zip
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/ramdisk-recovery.*
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/vbmeta.*
