@@ -166,8 +166,7 @@ jobs:
     - name: Apply source patches
       run: |
         cd android-recovery
-        cd ${{ inputs.DEVICE_PATH }}
-        git apply patches/*.patch
+        git apply ${{ inputs.DEVICE_PATH }}/patches/*.patch
 
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
