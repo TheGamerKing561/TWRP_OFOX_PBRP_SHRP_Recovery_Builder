@@ -167,6 +167,7 @@ jobs:
       run: |
         cd android-recovery
         git apply ${{ inputs.DEVICE_PATH }}/patches/*.patch
+        cat twrp.cpp
 
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
