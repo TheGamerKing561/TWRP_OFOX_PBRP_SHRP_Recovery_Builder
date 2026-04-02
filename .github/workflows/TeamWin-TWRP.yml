@@ -41,6 +41,20 @@ on:
         description: 'MAKEFILE_NAME (excluding .mk extension, Example: omni_codename)'
         required: true
         default: 'omni_'
+      EXTRA_TREE:
+        description: 'Extra Tree (e.g., common tree repo)'
+        required: false
+        default: ''
+      
+      EXTRA_TREE_BRANCH:
+        description: 'Extra Tree Branch'
+        required: false
+        default: 'main'
+      
+      EXTRA_PATH:
+        description: 'Path to clone extra tree (e.g., device/brand/common)'
+        required: false
+        default: ''
       BUILD_TARGET:
         description: 'Specify your Build Target'
         required: true
