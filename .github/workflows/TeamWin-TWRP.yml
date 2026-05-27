@@ -328,7 +328,7 @@ jobs:
           [${{ env.TWRP_SHORT_COMMIT }}](https://github.com/TeamWin/android_bootable_recovery/commit/${{ env.TWRP_COMMIT_ID }}) - ${{ env.TWRP_COMMIT_TITLE }}
 
           Device Tree Commit:
-          [${{ env.COMMIT_ID }}](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) - ${{ env.COMMIT_TITLE }}
+          [${{ env.SHORT_COMMIT_ID }}](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) - ${{ env.COMMIT_TITLE }}
 
         prerelease: true
 
