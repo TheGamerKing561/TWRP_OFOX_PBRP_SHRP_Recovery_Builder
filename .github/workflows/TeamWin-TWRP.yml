@@ -64,6 +64,11 @@ on:
         - boot
         - recovery
         - vendorboot
+      RECOVERY_INSTALLER:
+        description: 'Include recovery installer zip'
+        type: boolean
+        required: true
+        default: true
       LDCHECK:
         description: 'Use LDCHECK'
         required: false
@@ -158,7 +163,19 @@ jobs:
 
        echo "Detected TWRP version: $TWRP_VERSION"
        echo "TWRP_VERSION=$TWRP_VERSION" >> $GITHUB_ENV
-      
+
+    - name: Get TWRP Recovery Commit
+      run: |
+        cd android-recovery/bootable/recovery
+
+        TWRP_COMMIT_ID=$(git rev-parse HEAD)
+        TWRP_SHORT_COMMIT=$(git rev-parse --short HEAD)
+        TWRP_COMMIT_TITLE=$(git log -1 --pretty=%s)
+
+        echo "TWRP_COMMIT_ID=$TWRP_COMMIT_ID" >> $GITHUB_ENV
+        echo "TWRP_SHORT_COMMIT=$TWRP_SHORT_COMMIT" >> $GITHUB_ENV
+        echo "TWRP_COMMIT_TITLE=$TWRP_COMMIT_TITLE" >> $GITHUB_ENV
+       
     - name: Clone Device Tree
       run: |
         cd android-recovery
@@ -187,7 +204,7 @@ jobs:
       run: |
         echo "BUILD_DATE=$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
 
-    - name: Apply source patches
+    - name: Apply custom source patches
       run: |
         cd android-recovery/bootable/recovery
 
@@ -208,6 +225,38 @@ jobs:
         else
           echo "No patches directory found"
         fi
+    - name: Include Recovery Installer
+      if: inputs.RECOVERY_INSTALLER == true && inputs.MANIFEST_BRANCH != 'twrp-6.0' && inputs.BUILD_TARGET != 'vendorboot'
+      run: |
+        case ${{ inputs.MANIFEST_BRANCH }} in
+          twrp-7.1)
+            patchNum=5080
+            ;;
+          twrp-8.1)
+            patchNum=5079
+            ;;
+          twrp-9.0)
+            patchNum=5037
+            ;;
+          twrp-11)
+            patchNum=4964
+            ;;
+          twrp-12.1)
+            patchNum=5445
+            ;;
+          twrp-14|twrp-14.1)
+            patchNum=5445
+            ;;
+        esac
+
+        cd android-recovery
+        source build/envsetup.sh
+
+        if [ -n "$patchNum" ]; then
+          repopick -g https://gerrit.twrp.me ${patchNum}
+        fi
+      id: recoveryinstaller
+      continue-on-error: true
 
     - name: Installing python2 for legacy builds
       if: env.CHECK_LEGACY_BRANCH == 'true'
@@ -222,16 +271,24 @@ jobs:
     - name: Building Image 
       run: |
         cd android-recovery
+        
         set +e
         source build/envsetup.sh
         set -e
         
         export ALLOW_MISSING_DEPENDENCIES=true
+
+        if [ "${{ inputs.RECOVERY_INSTALLER }}" = "true" ] && [ "${{ steps.recoveryinstaller.outcome }}" = "success" ]; then
+          export USE_RECOVERY_INSTALLER=true
+          export RECOVERY_INSTALLER_PATH=bootable/recovery/installer
+        fi
+
         lunch ${{ inputs.MAKEFILE_NAME }}-eng || { echo "Lunch failed"; exit 1; }
 
         make clean
 
         make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
+
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
 
     - name: Rename Build Output
@@ -255,14 +312,24 @@ jobs:
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/*installer*zip
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/ramdisk-recovery.*
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/vbmeta.*
-        name: Unofficial TWRP for ${{ inputs.DEVICE_NAME }} [${{ env.SHORT_COMMIT_ID }}] // ${{ env.BUILD_DATE }}
+        name: Unofficial TWRP for ${{ inputs.DEVICE_NAME }} (${{ env.BUILD_DATE }}) (${{ env.SHORT_COMMIT_ID }})
         tag_name: build-${{ env.BUILD_DATE }}
         body: |
-          Build: ${{ inputs.MANIFEST_BRANCH }}
-          Device: [Device Tree](${{ inputs.DEVICE_TREE }})
-          Branch: ${{ inputs.DEVICE_TREE_BRANCH }}
-          Commit: [${{ env.COMMIT_ID }}](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) [${{ env.COMMIT_TITLE }}]
+          TWRP Branch: ${{ inputs.MANIFEST_BRANCH }}
+
+          Device: ${{ inputs.DEVICE_NAME }}
           Image Build Target: ${{ inputs.BUILD_TARGET }}
+          ${{ inputs.RECOVERY_INSTALLER && 'Include Recovery Installer: Yes' || 'Include Recovery Installer: No' }}
+
+          Device Tree Repo: [Device Tree](${{ inputs.DEVICE_TREE }})
+          Device Tree Branch: ${{ inputs.DEVICE_TREE_BRANCH }}
+
+          TWRP Recovery Commit:
+          [${{ env.TWRP_SHORT_COMMIT }}](https://github.com/TeamWin/android_bootable_recovery/commit/${{ env.TWRP_COMMIT_ID }}) - ${{ env.TWRP_COMMIT_TITLE }}
+
+          Device Tree Commit:
+          [${{ env.COMMIT_ID }}](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) - ${{ env.COMMIT_TITLE }}
+
         prerelease: true
 
     - name: Run LDCheck
