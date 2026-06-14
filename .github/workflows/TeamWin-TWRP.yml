@@ -258,6 +258,9 @@ jobs:
 
         if [ -n "$patchNum" ]; then
           repopick -g https://gerrit.twrp.me ${patchNum}
+
+          echo "Cloning TWRP A/B Installer backend from osm0sis.."
+          git clone https://github.com/osm0sis/twrp_abtemplate bootable/recovery/installer
         fi
       id: recoveryinstaller
       continue-on-error: true
