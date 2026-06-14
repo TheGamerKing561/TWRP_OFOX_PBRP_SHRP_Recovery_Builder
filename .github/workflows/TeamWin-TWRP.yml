@@ -310,6 +310,10 @@ jobs:
           mv ${{ inputs.BUILD_TARGET }}.img twrp-${VERSION}-${CODENAME}-${DATE}.img
         fi
 
+        if [ -f "recovery-installer.zip" ]; then
+          mv recovery-installer.zip twrp-installer-${VERSION}-${CODENAME}-${DATE}.zip
+        fi
+
     - name: Upload to Release
       if: success()
       uses: softprops/action-gh-release@v2
