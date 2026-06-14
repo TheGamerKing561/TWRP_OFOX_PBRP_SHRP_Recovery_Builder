@@ -38,9 +38,9 @@ on:
         required: true
         default: ''
       MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME (excluding .mk extension, Example: omni_codename)'
+        description: 'MAKEFILE_NAME (excluding .mk extension, Example: twrp_codename)'
         required: true
-        default: 'omni_'
+        default: 'twrp_'
       EXTRA_TREE:
         description: 'Extra Tree (e.g., common tree repo)'
         required: false
