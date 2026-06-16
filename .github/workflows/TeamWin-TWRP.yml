@@ -324,7 +324,7 @@ jobs:
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/ramdisk-recovery.*
           android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/vbmeta.*
         name: Unofficial TWRP for ${{ inputs.DEVICE_NAME }} (${{ env.BUILD_DATE }}) (${{ env.SHORT_COMMIT_ID }})
-        tag_name: build-${{ env.BUILD_DATE }}
+        tag_name: ${{ inputs.DEVICE_NAME }}-${{ env.BUILD_DATE }}
         body: |
           TWRP Branch: ${{ inputs.MANIFEST_BRANCH }}
 
