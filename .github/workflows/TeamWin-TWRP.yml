@@ -65,7 +65,7 @@ on:
         - recovery
         - vendorboot
       RECOVERY_INSTALLER:
-        description: 'Include recovery installer zip'
+        description: 'Include recovery installer zip (A\B devices only)'
         type: boolean
         required: true
         default: true
