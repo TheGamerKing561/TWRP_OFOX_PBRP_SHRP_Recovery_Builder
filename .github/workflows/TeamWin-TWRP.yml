@@ -75,7 +75,7 @@ on:
         default: 'false'
         type: boolean
       LDCHECKPATH:
-        description: 'Path of blobs to check'
+        description: 'Path of blobs to check (comma-separated)'
         required: true
         default: 'system/bin/qseecomd'
 
@@ -344,11 +344,17 @@ jobs:
         prerelease: true
 
     - name: Run LDCheck
-      if: inputs.LDCHECK == true
+      if: inputs.LDCHECK == true && inputs.LDCHECKPATH != null && inputs.LDCHECKPATH != ''
       run: |
         cd tools
         mv -n libneeds ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
         mv -n ldcheck ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
         cd ../android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root
-        python3 ldcheck -p system/lib64:vendor/lib64:system/lib:vendor/lib -d ${{ inputs.LDCHECKPATH }}
+        IFS=',' read -ra PATHS <<< "${{ inputs.LDCHECKPATH }}"
+        
+        for path in "${PATHS[@]}"; do
+          path=$(echo "$path" | xargs)  # trim spaces
+          echo "Checking: $path"
+          python3 ldcheck -p system/lib64:vendor/lib64:system/lib:vendor/lib -d "$path"
+        done
       continue-on-error: true
