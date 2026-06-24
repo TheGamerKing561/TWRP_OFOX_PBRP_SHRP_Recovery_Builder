@@ -344,7 +344,7 @@ jobs:
         prerelease: true
 
     - name: Run LDCheck
-      if: inputs.LDCHECK == 'true'
+      if: inputs.LDCHECK == true
       run: |
         cd tools
         mv -n libneeds ${GITHUB_WORKSPACE}/android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery/root/ || true
