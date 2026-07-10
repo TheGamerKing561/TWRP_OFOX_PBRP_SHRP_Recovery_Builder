@@ -45,12 +45,10 @@ on:
         description: 'Extra Tree (e.g., common tree repo)'
         required: false
         default: ''
-      
       EXTRA_TREE_BRANCH:
         description: 'Extra Tree Branch'
         required: false
         default: 'main'
-      
       EXTRA_PATH:
         description: 'Path to clone extra tree (e.g., device/brand/common)'
         required: false
@@ -69,6 +67,15 @@ on:
         type: boolean
         required: true
         default: true
+      APPLY_PATCHES:
+        description: 'Apply custom patches'
+        type: boolean
+        required: true
+        default: false
+      PATCHES_FOLDER:
+        description: 'Name of folder containing custom patches (inside the device tree)'
+        required: true
+        default: 'patches'
       LDCHECK:
         description: 'Use LDCHECK'
         required: false
@@ -152,27 +159,22 @@ jobs:
 
     - name: Detect TWRP Version
       run: |
-       cd android-recovery
-
-       TWRP_VERSION=$(grep -oP 'TW_MAIN_VERSION_STR\s+"\K[^"]+' bootable/recovery/variables.h)
-
-       if [ -z "$TWRP_VERSION" ]; then
-         echo "Could not detect TWRP version"
-         TWRP_VERSION="unknown"
-       fi
-
-       echo "Detected TWRP version: $TWRP_VERSION"
-       echo "TWRP_VERSION=$TWRP_VERSION" >> $GITHUB_ENV
+        cd android-recovery
+        TWRP_VERSION=$(grep -oP 'TW_MAIN_VERSION_STR\s+"\K[^"]+' bootable/recovery/variables.h)
+        if [ -z "$TWRP_VERSION" ]; then
+          echo "Could not detect TWRP version"
+          TWRP_VERSION="unknown"
+        fi
+        echo "Detected TWRP version: $TWRP_VERSION"
+        echo "TWRP_VERSION=$TWRP_VERSION" >> $GITHUB_ENV
 
     - name: Get TWRP Recovery Commit
       run: |
         cd android-recovery/bootable/recovery
-
         TWRP_COMMIT_ID=$(git rev-parse HEAD)
         TWRP_SHORT_COMMIT=$(git rev-parse --short HEAD)
         TWRP_COMMIT_TITLE=$(git log -1 --pretty=%s)
         TWRP_COMMIT_DATE=$(git log -1 --date=format:%Y-%m-%d --pretty=%cd)
-
         echo "TWRP_COMMIT_ID=$TWRP_COMMIT_ID" >> $GITHUB_ENV
         echo "TWRP_SHORT_COMMIT=$TWRP_SHORT_COMMIT" >> $GITHUB_ENV
         echo "TWRP_COMMIT_TITLE=$TWRP_COMMIT_TITLE" >> $GITHUB_ENV
@@ -211,24 +213,30 @@ jobs:
     - name: Apply custom source patches
       run: |
         cd android-recovery/bootable/recovery
+        PATCH_DIR="../../${{ inputs.DEVICE_PATH }}/${{ inputs.PATCHES_FOLDER }}"
+        HAS_PATCHES="false"
 
-        PATCH_DIR="../../${{ inputs.DEVICE_PATH }}/patches"
-
-        if [ -d "$PATCH_DIR" ]; then
-          echo "Applying patches from $PATCH_DIR"
-
-          for patch in $PATCH_DIR/*.patch; do
-            [ -f "$patch" ] || continue
-            echo "Applying $patch"
-
-            git apply "$patch" || {
-              echo "git apply failed, trying fallback..."
-              git apply --reject --whitespace=fix "$patch" || exit 1
-            }
-          done
+        if [ "${{ inputs.APPLY_PATCHES }}" = "true" ]; then
+          if [ -d "$PATCH_DIR" ]; then
+            echo "Checking patches from $PATCH_DIR"
+            for patch in $PATCH_DIR/*.patch; do
+              [ -f "$patch" ] || continue
+              echo "Applying $patch"
+              git apply "$patch" || {
+                echo "git apply failed, trying fallback..."
+                git apply --reject --whitespace=fix "$patch" || exit 1
+              }
+              HAS_PATCHES="true"
+            done
+          else
+            echo "Specified patches directory not found: $PATCH_DIR"
+          fi
         else
-          echo "No patches directory found"
+          echo "Patches disabled by user preference."
         fi
+
+        echo "HAS_PATCHES=$HAS_PATCHES" >> $GITHUB_ENV
+
     - name: Include Recovery Installer
       if: inputs.RECOVERY_INSTALLER == true && inputs.MANIFEST_BRANCH != 'twrp-6.0' && inputs.BUILD_TARGET != 'vendorboot'
       run: |
@@ -258,7 +266,6 @@ jobs:
 
         if [ -n "$patchNum" ]; then
           repopick -g https://gerrit.twrp.me ${patchNum}
-
           echo "Cloning TWRP A/B Installer backend from osm0sis.."
           git clone https://github.com/osm0sis/twrp_abtemplate bootable/recovery/installer
         fi
@@ -291,17 +298,13 @@ jobs:
         fi
 
         lunch ${{ inputs.MAKEFILE_NAME }}-eng || { echo "Lunch failed"; exit 1; }
-
         make clean
-
         make ${{ inputs.BUILD_TARGET }}image -j$(nproc --all)
-
         echo "Done building your ${{ inputs.BUILD_TARGET }}.img"
 
     - name: Rename Build Output
       run: |
         cd android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}
-
         VERSION="${{ env.TWRP_VERSION }}"
         CODENAME="${{ inputs.DEVICE_NAME }}"
         DATE="${{ env.BUILD_DATE }}"
@@ -337,10 +340,10 @@ jobs:
 
           TWRP Recovery Commit:
           [${{ env.TWRP_SHORT_COMMIT }}](https://github.com/TeamWin/android_bootable_recovery/commit/${{ env.TWRP_COMMIT_ID }}) - ${{ env.TWRP_COMMIT_TITLE }} (${{env.TWRP_COMMIT_DATE }})
+          ${{ env.HAS_PATCHES == 'true' && format('**Note: Custom patches were applied to the recovery source. Please check the "{0}" folder in the device tree used for the build, from which the patches were applied.**', inputs.PATCHES_FOLDER) || '' }}
 
           Device Tree Commit:
           [${{ env.SHORT_COMMIT_ID }}](${{ inputs.DEVICE_TREE }}/commit/${{ env.COMMIT_ID }}) - ${{ env.COMMIT_TITLE }} (${{env.COMMIT_DATE }})
-
         prerelease: true
 
     - name: Run LDCheck
