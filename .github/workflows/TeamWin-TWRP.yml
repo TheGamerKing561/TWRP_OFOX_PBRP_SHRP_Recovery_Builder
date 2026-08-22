@@ -76,6 +76,11 @@ on:
         description: 'Name of folder containing custom patches (inside the device tree)'
         required: true
         default: 'patches'
+      set_custom_build_identity:
+        description: Set custom BUILD_USERNAME and BUILD_HOSTNAME
+        required: false
+        default: false
+        type: boolean
       LDCHECK:
         description: 'Use LDCHECK'
         required: false
@@ -285,12 +290,18 @@ jobs:
     - name: Building Image 
       run: |
         cd android-recovery
-        
+
         set +e
         source build/envsetup.sh
         set -e
         
         export ALLOW_MISSING_DEPENDENCIES=true
+
+        if [[ "${{ github.actor }}" == "TheGamerKing561" && "${{ inputs.set_custom_build_identity }}" == "true" ]]; then
+          export BUILD_USERNAME="thegamerking"
+          export BUILD_HOSTNAME="github-runner"
+          echo "Using custom build identity."
+        fi
 
         if [ "${{ inputs.RECOVERY_INSTALLER }}" = "true" ] && [ "${{ steps.recoveryinstaller.outcome }}" = "success" ]; then
           export USE_RECOVERY_INSTALLER=true
